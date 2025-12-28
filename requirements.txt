@@ -6,3 +6,6 @@ google-auth-httplib2
 google-api-python-client
 nltk
 gspread
+oauth2client
+scipy
+scikit-learn
