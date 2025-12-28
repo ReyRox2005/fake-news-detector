@@ -16,7 +16,7 @@ from scipy.sparse import hstack
 # Streamlit Secrets se API Key uthayenge
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 genai.configure(api_key=GEMINI_API_KEY)
-ai_model = genai.GenerativeModel('gemini-1.5-flash')
+ai_model = genai.GenerativeModel('gemini-pro')
 
 # ------------------------
 # NLTK & Setup
@@ -132,3 +132,4 @@ with col2:
 
 st.markdown("---")
 st.caption("Developed with n8n Automation & Streamlit Cloud.")
+
