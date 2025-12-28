@@ -14,9 +14,18 @@ from scipy.sparse import hstack
 # Gemini AI Setup
 # ------------------------
 # Streamlit Secrets se API Key uthayenge
-GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-genai.configure(api_key=GEMINI_API_KEY)
-ai_model = genai.GenerativeModel('gemini-pro')
+# --- Gemini AI Setup ---
+try:
+    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+    genai.configure(api_key=GEMINI_API_KEY)
+    
+    # Ye model name v1 stable version ke liye sabse best hai
+    ai_model = genai.GenerativeModel(model_name='gemini-1.5-flash') 
+    
+    # Test call to check if it's working
+    # ai_model.generate_content("test") 
+except Exception as e:
+    st.error(f"Gemini Config Error: {e}")
 
 # ------------------------
 # NLTK & Setup
@@ -132,4 +141,5 @@ with col2:
 
 st.markdown("---")
 st.caption("Developed with n8n Automation & Streamlit Cloud.")
+
 
