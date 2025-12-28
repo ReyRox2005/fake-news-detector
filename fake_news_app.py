@@ -5,9 +5,18 @@ import numpy as np
 import nltk
 import pandas as pd
 import requests
+import google.generativeai as genai
 from io import StringIO
 from nltk.corpus import stopwords
 from scipy.sparse import hstack
+
+# ------------------------
+# Gemini AI Setup
+# ------------------------
+# Streamlit Secrets se API Key uthayenge
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+genai.configure(api_key=GEMINI_API_KEY)
+ai_model = genai.GenerativeModel('gemini-1.5-flash')
 
 # ------------------------
 # NLTK & Setup
@@ -15,11 +24,9 @@ from scipy.sparse import hstack
 nltk.download("stopwords")
 stop_words = stopwords.words("english")
 
-st.set_page_config(page_title="Fake News Detector AI", layout="wide")
+st.set_page_config(page_title="Hybrid Fake News Detector", layout="wide")
 
-# ------------------------
 # Text cleaning function
-# ------------------------
 def clean_text(text):
     text = str(text).lower()
     text = re.sub(r'\W', ' ', text)
@@ -27,11 +34,10 @@ def clean_text(text):
     text = ' '.join([word for word in text.split() if word not in stop_words])
     return text
 
-# ------------------------
 # Load preprocessing objects
-# ------------------------
 @st.cache_resource
 def load_models():
+    # model/ folder path ensure karein GitHub par sahi ho
     with open("model/hybrid_svm_model.pkl", "rb") as f:
         model = pickle.load(f)
     with open("model/hybrid_tfidf.pkl", "rb") as f:
@@ -40,77 +46,89 @@ def load_models():
         scaler = pickle.load(f)
     return model, vectorizer, scaler
 
-model, vectorizer, scaler = load_models()
-
 # ------------------------
-# Streamlit UI - Main App
+# Streamlit UI
 # ------------------------
-st.title("🛡️ ADVANCED FAKE NEWS DETECTOR")
+st.title("🛡️ HYBRID FAKE NEWS DETECTOR")
+st.write("Machine Learning Analysis + Real-time AI Fact-Checking")
 st.markdown("---")
 
 col1, col2 = st.columns([2, 1])
 
 with col1:
-    st.subheader("Analyze Headline")
+    st.subheader("🔍 Headline Analysis")
     user_input = st.text_area("Enter news headline here:", placeholder="e.g., Scientist found a way to live forever...")
 
     if st.button("Check Authenticity"):
         if user_input.strip() == "":
             st.warning("Please enter a headline.")
         else:
-            # Preprocessing
-            cleaned_text = clean_text(user_input)
+            # Layout for dual results
+            res_col1, res_col2 = st.columns(2)
             
-            # Metadata features (matching the hybrid model training)
-            title_length = len(user_input)
-            exclamation_count = user_input.count("!")
-            tweet_log = np.log1p(10) # Default
-            source_encoded = 0 # Default for manual input
+            # --- 1. Machine Learning Prediction (SVM) ---
+            with res_col1:
+                st.info("🤖 SVM Model Result")
+                try:
+                    model, vectorizer, scaler = load_models()
+                    cleaned_text = clean_text(user_input)
+                    
+                    # Numeric features
+                    title_length = len(user_input)
+                    exclamation_count = user_input.count("!")
+                    tweet_log = np.log1p(10)
+                    source_encoded = 0
 
-            # Combine Numeric Features
-            numeric_features = np.array([[title_length, exclamation_count, tweet_log, source_encoded]])
-            numeric_features_scaled = scaler.transform(numeric_features)
+                    numeric_features = np.array([[title_length, exclamation_count, tweet_log, source_encoded]])
+                    numeric_features_scaled = scaler.transform(numeric_features)
+                    text_features = vectorizer.transform([cleaned_text])
+                    final_features = hstack([text_features, numeric_features_scaled])
 
-            # TF-IDF Features
-            text_features = vectorizer.transform([cleaned_text])
+                    prediction = model.predict(final_features)[0]
+                    
+                    if prediction == 1:
+                        st.success("✅ **REAL (Pattern Match)**")
+                    else:
+                        st.error("🚨 **FAKE (Pattern Match)**")
+                    st.caption("Based on linguistic patterns.")
+                except Exception as e:
+                    st.error(f"ML Error: {e}")
 
-            # Final Stack
-            final_features = hstack([text_features, numeric_features_scaled])
-
-            # Prediction
-            prediction = model.predict(final_features)[0]
-            
-            if prediction == 1:
-                st.success("✅ **PREDICTION: THIS NEWS IS REAL**")
-            else:
-                st.error("🚨 **PREDICTION: THIS NEWS IS LIKELY FAKE**")
+            # --- 2. Gemini AI Fact-Check ---
+            with res_col2:
+                st.info("🌐 AI Fact-Check")
+                with st.spinner('Checking facts...'):
+                    try:
+                        prompt = f"Fact-check this news headline: '{user_input}'. Is it true or false based on recent news? Give a clear 'Verdict: TRUE/FALSE' and a short reason."
+                        response = ai_model.generate_content(prompt)
+                        st.write(response.text)
+                        st.caption("Based on real-time factual data.")
+                    except Exception as e:
+                        st.error(f"AI Error: {e}")
 
 # ------------------------
-# Live News Feed Section
+# Live News Feed (Google Sheets)
 # ------------------------
 with col2:
-    st.subheader("📰 Live News Feed (n8n)")
-    st.write("Latest news analyzed by AI:")
+    st.subheader("📰 Live n8n Feed")
+    st.write("Latest results from your automated sheet:")
     
     SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1rp9WfOluqxlVcOaDkOwf4EQy4RSZbi-rGKwNINZ3804/export?format=csv"
     
     try:
         response = requests.get(SHEET_CSV_URL)
         df = pd.read_csv(StringIO(response.text))
-        
-        # Latest 5 news dikhayen (reverse order)
         latest_news = df.tail(5)[['Headline', 'Verdict']].iloc[::-1]
         
         for index, row in latest_news.iterrows():
-            with st.expander(f"{row['Headline'][:50]}..."):
-                st.write(f"**Full Headline:** {row['Headline']}")
-                st.write(f"**AI Analysis:** {row['Verdict']}")
+            with st.expander(f"{str(row['Headline'])[:40]}..."):
+                st.write(f"**News:** {row['Headline']}")
+                st.write(f"**Analysis:** {row['Verdict']}")
                 
-        if st.button("🔄 Refresh Feed"):
+        if st.button("🔄 Refresh"):
             st.rerun()
-            
-    except Exception as e:
-        st.info("Waiting for live feed data...")
+    except:
+        st.info("Waiting for sheet data...")
 
 st.markdown("---")
-st.caption("Model is trained on Live News via n8n Automation.")
+st.caption("Developed with n8n Automation & Streamlit Cloud.")
